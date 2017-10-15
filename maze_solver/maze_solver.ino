@@ -21,7 +21,7 @@ AccelStepper stepperRight(AccelStepper::FULL4WIRE, 6, 7, 8, 9);
 // functions
 void sensors();
 int getSensorStatus();
-
+void updatePosition();
 int increaseDirection(int dir);
 int decreaseDirection(int dir);
 
@@ -34,7 +34,7 @@ boolean sensorFarRight = false;
 
 // maze
 // first four elements of array are the sides of junction and last one is the type of junction
-// side => 0 -> unknown, 1 -> road, 2 -> wall 
+// side => 0 -> road (unknown), 1 -> road (visited), 2 -> road (deadend), 3 -> wall 
 // type => 0 -> junction(unknown), 1-> start, 2 -> finish
 short int maze[10][10][5];
  
@@ -76,9 +76,9 @@ void setup() {
 
   // initilize maze[0][0]
   maze[xPos][yPos][0] = 1; // road
-  maze[xPos][yPos][1] = 2; // wall
-  maze[xPos][yPos][2] = 2; // wall
-  maze[xPos][yPos][3] = 2; // wall
+  maze[xPos][yPos][1] = 3; // wall
+  maze[xPos][yPos][2] = 3; // wall
+  maze[xPos][yPos][3] = 3; // wall
   maze[xPos][yPos][4] = 1; // type -> start
 
   
@@ -150,24 +150,38 @@ void loop() {
         updatePosition(); // update xPos, yPos according to direction
 
         // update current junction on maze
-        maze[xPos][yPos][decreaseDirection(direction)] = nextJunctionData[0] > JUNCTION_THRESHOLD   ? 1 : 2; // left
-        maze[xPos][yPos][direction]                    = nextJunctionData[1] > 3*JUNCTION_THRESHOLD ? 1 : 2; // forward
-        maze[xPos][yPos][increaseDirection(direction)] = nextJunctionData[2] > JUNCTION_THRESHOLD   ? 1 : 2; // right
-        maze[xPos][yPos][decreaseDirection(decreaseDirection(direction))] = 1;                               // backward (must be road)
+        if(nextJunctionData[0] < JUNCTION_THRESHOLD)
+          maze[xPos][yPos][decreaseDirection(direction)] = 3;
+
+        if(nextJunctionData[1] < 3*JUNCTION_THRESHOLD)
+          maze[xPos][yPos][direction] = 3;
+
+        if(nextJunctionData[2] > JUNCTION_THRESHOLD)
+          maze[xPos][yPos][increaseDirection(direction)] = 3;
         
         // find where to turn
-        if(maze[xPos][yPos][decreaseDirection(direction)] == 1){
+        // first look for 0's if there aren't any then 1's
+        if(maze[xPos][yPos][decreaseDirection(direction)] == 0){
+          dirToGo = 1;
+        }else if(maze[xPos][yPos][direction] == 0){
+          dirToGo = 2;
+        }else if(maze[xPos][yPos][increaseDirection(direction)] == 0){
+          dirToGo = 3;
+        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 0){ -> since backward is road
+          dirToGo = 4;
+        }else if(maze[xPos][yPos][decreaseDirection(direction)] == 1){
           dirToGo = 1;
         }else if(maze[xPos][yPos][direction] == 1){
           dirToGo = 2;
         }else if(maze[xPos][yPos][increaseDirection(direction)] == 1){
           dirToGo = 3;
-        }else{ // if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 1) -> since backward is road
+        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 1){ -> since backward is visited road
           dirToGo = 4;
         }
 
         // TODO: finish case
         
+        maze[xPos][yPos][increaseDirection(increaseDirection(direction))]++;
         state = 1;
       }
       
@@ -183,7 +197,9 @@ void loop() {
         stepperRight.move(-1 * TURN_90_UNIT);
         
       }else if(dirToGo == 2){
+        
         // go forward - nothing to do since its directed to forward
+        
       }else if(dirToGo == 3){
         // turn right
 
@@ -195,7 +211,7 @@ void loop() {
       }else if(dirToGo == 4){
         // turn backward
 
-        direction = increaseDirection(increaseDirection(direction)); // 
+        direction = increaseDirection(increaseDirection(direction));
         
         stepperLeft.move (2 * TURN_90_UNIT);
         stepperRight.move(2 * TURN_90_UNIT);
@@ -209,6 +225,7 @@ void loop() {
         
         nextJunctionData = { 0, 0, 0 }; // there might be an error
         state = 0;
+        maze[xPos][yPos][direction]++;
         
         stepperLeft.move (UNIT);
         stepperRight.move(-UNIT);
