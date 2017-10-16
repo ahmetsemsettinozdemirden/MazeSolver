@@ -8,11 +8,14 @@
 #define SENSOR_FR       A4
 
 #define SENSOR_THRESHOLD 600
-#define JUNCTION_THRESHOLD 10
+#define JUNCTION_THRESHOLD 50
 #define ACCELERATION 600.0
-#define UNIT 194.5
+#define UNIT 198.0
+#define INITIAL_UNIT 245.0
 #define TURN_90_UNIT 85.0
-#define DISTANCE_TO_JUNCTION 120.0
+#define DISTANCE_TO_JUNCTION 95.0
+
+#define SENSOR_DEBUG false
 
 // stepper motors
 AccelStepper stepperLeft (AccelStepper::FULL4WIRE, 2, 3, 4, 5);
@@ -52,15 +55,15 @@ int nextJunctionData[3] = { 0 };
 // direction correction
 int correctionSpeed[2]     = { 200, 200 }; // {left, right}
 int correctionSpeeds[9][2] = {
-  { correctionSpeed[0], correctionSpeed[1] - 20 }
-  { correctionSpeed[0], correctionSpeed[1] - 15 },
-  { correctionSpeed[0], correctionSpeed[1] - 10 },
-  { correctionSpeed[0], correctionSpeed[1] - 5  },
+  { correctionSpeed[0] - 50, correctionSpeed[1] + 50 },
+  { correctionSpeed[0] - 37, correctionSpeed[1] + 37 },
+  { correctionSpeed[0] - 25, correctionSpeed[1] + 25 },
+  { correctionSpeed[0] - 12, correctionSpeed[1] + 12 },
   { correctionSpeed[0], correctionSpeed[1] },
-  { correctionSpeed[0] - 5,  correctionSpeed[1] },
-  { correctionSpeed[0] - 10, correctionSpeed[1] },
-  { correctionSpeed[0] - 15, correctionSpeed[1] },
-  { correctionSpeed[0] - 20, correctionSpeed[1] },
+  { correctionSpeed[0] + 12, correctionSpeed[1] - 12 },
+  { correctionSpeed[0] + 25, correctionSpeed[1] - 25 },
+  { correctionSpeed[0] + 37, correctionSpeed[1] - 37 },
+  { correctionSpeed[0] + 50, correctionSpeed[1] - 50 }
 };
 
 void setup() {
@@ -84,18 +87,14 @@ void setup() {
   
   stepperLeft.setMaxSpeed(correctionSpeed[0]);
   stepperLeft.setAcceleration(ACCELERATION);
-  stepperLeft.moveTo(UNIT);
+  stepperLeft.moveTo(INITIAL_UNIT);
 
   stepperRight.setMaxSpeed(correctionSpeed[1]);
   stepperRight.setAcceleration(ACCELERATION);
-  stepperRight.moveTo(-UNIT);
-
-  Serial.begin(9600);
+  stepperRight.moveTo(-INITIAL_UNIT);
 
   delay(1000);
 }
-
-bool turning = true;
 
 void loop() {
 
@@ -104,14 +103,11 @@ void loop() {
   
   int sensorStatus = getSensorStatus();
   
-//  Serial.print("sensorStatus:");
-//  Serial.println(sensorStatus);
-
   if(mode == 0){
     // stand-by
 
-    Serial.println("Preparing to move...");
-    delay(3000);
+//    Serial.println("Preparing to move...");
+    delay(2000);
     mode = 1;
     
   }else if(mode == 1){
@@ -124,10 +120,18 @@ void loop() {
       stepperLeft.setMaxSpeed (sensorStatus < 9 ? correctionSpeeds[sensorStatus][0] : correctionSpeed[0]);
       stepperRight.setMaxSpeed(sensorStatus < 9 ? correctionSpeeds[sensorStatus][1] : correctionSpeed[1]);
 
-      if(stepperLeft.distanceToGo()  < DISTANCE_TO_JUNCTION && stepperLeft.distanceToGo()  > 0 &&
-         stepperRight.distanceToGo() < DISTANCE_TO_JUNCTION && stepperRight.distanceToGo() > 0){
+      if(stepperLeft.distanceToGo() == DISTANCE_TO_JUNCTION + 1 || -stepperRight.distanceToGo() == DISTANCE_TO_JUNCTION + 1 ){
+
+        stepperLeft.move ( DISTANCE_TO_JUNCTION);
+        stepperRight.move(-DISTANCE_TO_JUNCTION);
+
+//        stepperLeft.setSpeed (0);
+//        stepperRight.setSpeed(0);
+          
+      }else if(stepperLeft.distanceToGo()  < DISTANCE_TO_JUNCTION &&  stepperLeft.distanceToGo()  > 0 && 
+              -stepperRight.distanceToGo() < DISTANCE_TO_JUNCTION && -stepperRight.distanceToGo() > 0 ){
         // start counting total sensor data until middle of next junction
-      
+        
         if(sensorFarLeft)
           nextJunctionData[0]++;
           
@@ -136,15 +140,8 @@ void loop() {
           
         if(sensorFarRight)
           nextJunctionData[2]++;
-
-        Serial.print("left: ");
-        Serial.print(nextJunctionData[0]);
-        Serial.print(" - middle: ");
-        Serial.print(nextJunctionData[1]);
-        Serial.print(" - right: ");
-        Serial.println(nextJunctionData[2]);
         
-      }else if(stepperLeft.distanceToGo() == 0 && stepperRight.distanceToGo() == 0){
+      }else if(stepperLeft.distanceToGo() == 0 || -stepperRight.distanceToGo() == 0){
         // until middle of next junction
 
         updatePosition(); // update xPos, yPos according to direction
@@ -153,10 +150,10 @@ void loop() {
         if(nextJunctionData[0] < JUNCTION_THRESHOLD)
           maze[xPos][yPos][decreaseDirection(direction)] = 3;
 
-        if(nextJunctionData[1] < 3*JUNCTION_THRESHOLD)
+        if(nextJunctionData[1] < 10*JUNCTION_THRESHOLD)
           maze[xPos][yPos][direction] = 3;
 
-        if(nextJunctionData[2] > JUNCTION_THRESHOLD)
+        if(nextJunctionData[2] < JUNCTION_THRESHOLD)
           maze[xPos][yPos][increaseDirection(direction)] = 3;
         
         // find where to turn
@@ -167,7 +164,7 @@ void loop() {
           dirToGo = 2;
         }else if(maze[xPos][yPos][increaseDirection(direction)] == 0){
           dirToGo = 3;
-        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 0){ -> since backward is road
+        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 0){ // -> since backward is road
           dirToGo = 4;
         }else if(maze[xPos][yPos][decreaseDirection(direction)] == 1){
           dirToGo = 1;
@@ -175,7 +172,7 @@ void loop() {
           dirToGo = 2;
         }else if(maze[xPos][yPos][increaseDirection(direction)] == 1){
           dirToGo = 3;
-        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 1){ -> since backward is visited road
+        }else if(maze[xPos][yPos][increaseDirection(increaseDirection(direction))] == 1){ // -> since backward is visited road
           dirToGo = 4;
         }
 
@@ -223,7 +220,8 @@ void loop() {
       if(!stepperLeft.isRunning() && !stepperRight.isRunning()){
         // after turn move to the next junction
         
-        nextJunctionData = { 0, 0, 0 }; // there might be an error
+        for(int i=0; i<3; i++)
+          nextJunctionData[i] = 0;
         state = 0;
         maze[xPos][yPos][direction]++;
         
@@ -253,6 +251,7 @@ void sensors() {
   sensorLeft     = analogRead(SENSOR_L)  < SENSOR_THRESHOLD;
   sensorFarLeft  = analogRead(SENSOR_FL) < SENSOR_THRESHOLD;
 
+  #if SENSOR_DEBUG
 //  Serial.print("FL:");
 //  Serial.print(sensorFarLeft);
 //  Serial.print(" - L:");
@@ -263,7 +262,7 @@ void sensors() {
 //  Serial.print(sensorRight);
 //  Serial.print(" - FR:");
 //  Serial.println(sensorFarRight);
-
+  #endif
 }
 
 int getSensorStatus() {
