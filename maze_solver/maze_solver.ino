@@ -29,7 +29,8 @@ short int increaseDirection(short int dir);
 short int decreaseDirection(short int dir);
 
 // sensors
-boolean lastSensorValues[5][10] = { false };
+int dataReadNumber = 0;
+boolean lastSensorValues[5][20] = { false };
 boolean sensorFarLeft  = false;
 boolean sensorMiddle   = false;
 boolean sensorLeft     = false;
@@ -40,17 +41,28 @@ boolean sensorFarRight = false;
 // first four elements of array are the sides of junction and last one is the type of junction
 // side => 0 -> road (unknown), 1 -> road (visited), 2 -> road (deadend), 3 -> wall 
 // type => 0 -> junction(unknown), 1-> start, 2 -> finish
-short int maze[10][10][4];
+short int maze[10][10][4] = {
+  {{2,3,3,3}, {3,2,2,3}, {3,2,3,3}, {3,2,3,3}, {2,3,3,3}, {2,2,2,3}, {3,3,2,3}, {2,2,3,3}, {3,3,2,3}, {3,2,3,3}},
+  {{3,2,3,3}, {2,3,3,2}, {2,2,2,2}, {3,3,2,2}, {2,3,3,3}, {2,2,2,2}, {3,3,2,3}, {2,2,3,2}, {3,3,2,3}, {3,2,3,2}},
+  {{2,3,3,2}, {2,2,2,3}, {2,3,2,2}, {2,3,2,3}, {2,2,2,3}, {2,3,2,2}, {2,3,2,3}, {2,2,2,2}, {2,3,2,3}, {3,2,2,2}},
+  {{3,2,3,3}, {2,3,3,2}, {2,2,2,3}, {3,2,2,3}, {2,2,3,2}, {2,2,2,2}, {2,3,2,3}, {3,3,2,2}, {2,2,3,3}, {3,3,2,2}},
+  {{2,3,3,2}, {2,3,2,3}, {3,3,2,2}, {2,2,3,2}, {3,2,2,2}, {2,3,3,2}, {2,3,2,3}, {2,2,2,3}, {2,3,2,2}, {3,2,2,3}},
+  {{2,2,3,3}, {2,3,2,3}, {2,2,2,3}, {3,3,2,2}, {2,2,3,2}, {2,3,2,3}, {3,3,2,3}, {2,2,3,2}, {2,2,2,3}, {3,3,2,2}},
+  {{2,3,3,2}, {3,3,2,3}, {3,2,3,2}, {2,3,3,3}, {3,3,2,2}, {2,2,3,3}, {2,2,2,3}, {3,3,2,2}, {2,2,3,2}, {3,2,2,3}},
+  {{2,2,3,3}, {2,3,2,3}, {3,2,2,2}, {2,2,3,3}, {2,2,2,3}, {3,3,2,2}, {3,3,3,2}, {2,2,3,3}, {2,3,2,2}, {3,2,2,2}},
+  {{3,3,3,2}, {2,3,3,3}, {2,2,2,2}, {3,2,2,2}, {2,2,3,2}, {2,3,2,3}, {2,2,2,3}, {2,3,2,2}, {2,3,2,3}, {3,2,2,2}},
+  {{2,3,3,3}, {2,3,2,3}, {3,3,2,2}, {2,3,3,2}, {3,3,2,2}, {2,3,3,3}, {2,3,2,2}, {3,3,2,3}, {2,3,3,3}, {3,3,2,2}}
+};
  
 // car
-short int mode      = 0; // 0 -> standby, 1 -> explore, 2 -> shortest path
+short int mode      = 2; // 0 -> standby, 1 -> explore, 2 -> shortest path
 short int state     = 0; // 1 -> forward (direction correction), 2 -> turning
 short int direction = 0; // 0 -> north, 1 -> east, 2 -> south, 3 -> west
 short int dirToGo   = 0; // 0 -> nowhere, 1 -> left, 2 -> forward, 3 -> right, 4 -> backward
 short int xPos      = 0; // current x position
 short int yPos      = 0; // current y position
-short int xPosFinish = -1;
-short int yPosFinish = -1;
+short int xPosFinish = 7;
+short int yPosFinish = 6;
 
 
 // 0 -> left, 1 -> middle, 2 -> right 
@@ -88,21 +100,27 @@ short int nextYPos = 0;
 void setup() {
   
   // initialize maze as unknown
+//  for(int i=0; i<10; i++){
+//    for(int j=0; j<10; j++){
+//      for(int k=0; k<4; k++){
+//        maze[i][j][k] = 0;
+//      }
+//    }
+//  }
+//
+//  // initilize maze[0][0]
+//  maze[xPos][yPos][0] = 1; // road
+//  maze[xPos][yPos][1] = 3; // wall
+//  maze[xPos][yPos][2] = 3; // wall
+//  maze[xPos][yPos][3] = 3; // wall
+  
   for(int i=0; i<10; i++){
     for(int j=0; j<10; j++){
-      for(int k=0; k<4; k++){
-        maze[i][j][k] = 0;
-      }
+      mazeDistances[i][j] = 999;
     }
   }
 
-  // initilize maze[0][0]
-  maze[xPos][yPos][0] = 1; // road
-  maze[xPos][yPos][1] = 3; // wall
-  maze[xPos][yPos][2] = 3; // wall
-  maze[xPos][yPos][3] = 3; // wall
-
-//  Serial.begin(9600);
+  Serial.begin(9600);
   delay(1000);
   
   stepperLeft.setMaxSpeed(correctionSpeed[0]);
@@ -151,7 +169,7 @@ void loop() {
         nextJunctionData[2]++;
 
       // Calibration - no calibration for straight forward junction
-      if(sensorStatus > 9 && nextJunctionData[1] > JUNCTION_THRESHOLD && junctionPassed != 2){
+      if(sensorStatus > 9 && nextJunctionData[1] > JUNCTION_THRESHOLD && junctionPassed != 2 && dataReadNumber > 20){
 
 //        if(junctionPassed == 0)
 //          Serial.println(sensorStatus);
@@ -168,11 +186,6 @@ void loop() {
 
           if(xPos == 0 && yPos == 0){ // start
 
-            for(int i=0; i<10; i++){
-              for(int j=0; j<10; j++){
-                mazeDistances[i][j] = 999;
-              }
-            }
             direction = 0;
 
             state = 2; // start solving maze
@@ -195,7 +208,7 @@ void loop() {
         }
       }
 
-      if(((junctionPassed < 2 && sensorStatus == 9) || (junctionPassed == 1 && sensorStatus < 9)) && nextJunctionData[1] > JUNCTION_THRESHOLD){
+      if(((junctionPassed < 2 && sensorStatus == 9) || (junctionPassed == 1 && sensorStatus < 9)) && nextJunctionData[1] > JUNCTION_THRESHOLD && dataReadNumber > 20){
 
 //        String debug = "\n" + String(nextJunctionData[0]) + " - " + String(nextJunctionData[1]) + " - " + String(nextJunctionData[2]) + " s:" + String(sensorStatus);
 //        Serial.println(debug);
@@ -296,6 +309,10 @@ void loop() {
         
         for(int i=0; i<3; i++)
           nextJunctionData[i] = 0;
+        for(int i=0; i < 5; i++)
+          for(int j=0; j < 20; j++)
+            lastSensorValues[i][j] = 0;
+        dataReadNumber = 0;
         state = 0;
         maze[xPos][yPos][direction]++;
         junctionPassed = 0;
@@ -313,9 +330,17 @@ void loop() {
     // stop engines
     stepperLeft.stop();
     stepperRight.stop();
+
+    for(int j=9; j >= 0; j--){
+      for(int i=0; i < 10; i++){
+        Serial.print(mazeDistances[i][j]);
+        Serial.print('\t');
+      }
+      Serial.print('\n');
+    }
     
     while(true){
-      
+        
       if(distance < mazeDistances[xPos][yPos]){
         // junction should be improved
         
@@ -323,8 +348,9 @@ void loop() {
   
         // find number of possible roads
         short int possibleRoads = 0;
-        for(int i=3; i > 0; i--)
-          if(maze[xPos][yPos][i] != 3 && i != increaseDirection(increaseDirection(direction)))
+        short int lastDir = direction;
+        for(int i=3; i >= 0; i--)
+          if(maze[xPos][yPos][i] != 3 && i != increaseDirection(increaseDirection(lastDir)))
             possibleRoads++;
   
         if(possibleRoads == 0){
@@ -359,11 +385,13 @@ void loop() {
           
         }else{
           
+          
           // findDirToGo
-          for(int i=3; i > 0; i--)
-            if(maze[xPos][yPos][i] != 3 && i != increaseDirection(increaseDirection(direction)))
+          short int lastDir = direction;
+          for(int i=3; i >= 0; i--)
+            if(maze[xPos][yPos][i] != 3 && i != increaseDirection(increaseDirection(lastDir)))
               direction = i;
-    
+
           if(possibleRoads > 1){
             // push stack
 
@@ -416,6 +444,16 @@ void loop() {
   
     }
 
+    Serial.println(F("numbers inserted"));
+    
+    for(int j=9; j >= 0; j--){
+      for(int i=0; i < 10; i++){
+        Serial.print(mazeDistances[i][j]);
+        Serial.print('\t');
+      }
+      Serial.print('\n');
+    }
+
     // maze to solution string
 
     xPos = xPosFinish;
@@ -435,8 +473,8 @@ void loop() {
     updatePosition();
 
     
-    while(xPos != 0 && yPos != 0){
-
+    while(xPos != 0 || yPos != 0){
+      
       if(maze[xPos][yPos][decreaseDirection(direction)] != 3){
 
         updateNextPosition(decreaseDirection(direction));
@@ -444,32 +482,49 @@ void loop() {
         if(mazeDistances[nextXPos][nextYPos] < distance){
           direction = decreaseDirection(direction);
           reverseSolution += "L";
+          distance = mazeDistances[nextXPos][nextYPos];
+          updatePosition();
+          continue;
         }
-      }else if(maze[xPos][yPos][direction] != 3){
+      }
+      
+      if(maze[xPos][yPos][direction] != 3){
         
         updateNextPosition(direction);
         
         if(mazeDistances[nextXPos][nextYPos] < distance){
 //          direction = direction;
           reverseSolution += "F";
+          distance = mazeDistances[nextXPos][nextYPos];
+          updatePosition();
+          continue;
         }
-      }else if(maze[xPos][yPos][increaseDirection(direction)] != 3){
+      }
+      
+      if(maze[xPos][yPos][increaseDirection(direction)] != 3){
         
         updateNextPosition(increaseDirection(direction));
         
         if(mazeDistances[nextXPos][nextYPos] < distance){
           direction = increaseDirection(direction);
           reverseSolution += "R";
+          distance = mazeDistances[nextXPos][nextYPos];
+          updatePosition();
+          continue;
         }
       }
 
-      updatePosition();
       
     }
 
-    for(int i=1; i <= reverseSolution.length(); i++){
+    Serial.print(F("reverseSolution:"));
+    Serial.println(reverseSolution);
 
-      char s;
+    solution = "F";
+    
+    for(int i=1; i < reverseSolution.length(); i++){
+
+      char s = 'F';
 
       if(reverseSolution.charAt(reverseSolution.length()-i) == 'R')
         s = 'L';
@@ -478,6 +533,10 @@ void loop() {
         
       solution += s;
     }
+
+    
+    Serial.print(F("solution:"));
+    Serial.println(solution);
 
     distance = 0;
     mode = 3;
@@ -595,11 +654,11 @@ void loop() {
 
 void sensors() {
 
-  for(int i=0; i < 5; i++){
-    for(int j=9; j > 0; j--){
+  dataReadNumber++;
+
+  for(int i=0; i < 5; i++)
+    for(int j=19; j > 0; j--)
       lastSensorValues[i][j] = lastSensorValues[i][j-1];
-    }
-  }
 
   lastSensorValues[0][0] = analogRead(SENSOR_FR) < SENSOR_THRESHOLD;
   lastSensorValues[1][0] = analogRead(SENSOR_R)  < SENSOR_THRESHOLD;
@@ -607,42 +666,34 @@ void sensors() {
   lastSensorValues[3][0] = analogRead(SENSOR_L)  < SENSOR_THRESHOLD;
   lastSensorValues[4][0] = analogRead(SENSOR_FL) < SENSOR_THRESHOLD;
 
-  short int average = 0;
-  for(int i=0; i < 10; i++)
-    average += lastSensorValues[0][i] ? 1 : 0;
-  sensorFarRight = average > 5;
+  short averageFarRight = 0;
+  for(int i=0; i < 20; i++)
+    averageFarRight += lastSensorValues[0][i] ? 1 : 0;
+  sensorFarRight = averageFarRight > 5;
 
-  average = 0;
-  for(int i=0; i < 10; i++)
-    average += lastSensorValues[1][i] ? 1 : 0;
-  sensorRight = average > 5;
+  short averageRight = 0;
+  for(int i=0; i < 20; i++)
+    averageRight += lastSensorValues[1][i] ? 1 : 0;
+  sensorRight = averageRight > 5;
   
-  average = 0;
-  for(int i=0; i < 10; i++)
-    average += lastSensorValues[2][i] ? 1 : 0;
-  sensorMiddle = average > 5;
+  short averageMiddle = 0;
+  for(int i=0; i < 20; i++)
+    averageMiddle += lastSensorValues[2][i] ? 1 : 0;
+  sensorMiddle = averageMiddle > 5;
   
-  average = 0;
-  for(int i=0; i < 10; i++)
-    average += lastSensorValues[3][i] ? 1 : 0;
-  sensorLeft = average > 5;
+  short averageLeft = 0;
+  for(int i=0; i < 20; i++)
+    averageLeft += lastSensorValues[3][i] ? 1 : 0;
+  sensorLeft = averageLeft > 5;
   
-  average = 0;
-  for(int i=0; i < 10; i++)
-    average += lastSensorValues[4][i] ? 1 : 0;
-  sensorFarLeft = average > 5;
+  short averageFarLeft = 0;
+  for(int i=0; i < 20; i++)
+    averageFarLeft += lastSensorValues[4][i] ? 1 : 0;
+  sensorFarLeft = averageFarLeft > 5;
 
-  
-//  Serial.print(F("FL:"));
-//  Serial.print(analogRead(SENSOR_FR) < SENSOR_THRESHOLD);
-//  Serial.print(F(" - L:"));
-//  Serial.print(sensorLeft);
-//  Serial.print(F(" - M:"));
-//  Serial.print(sensorMiddle);
-//  Serial.print(F(" - R:"));
-//  Serial.print(sensorRight);
-//  Serial.print(F(" - FR:"));
-//  Serial.println(sensorFarRight);
+//  String debug = String(averageFarLeft) + "-" +String(averageLeft) + "-" + String(averageMiddle) + "-" + String(averageRight) + "-" + String(averageFarRight);
+//
+//  Serial.println(debug);
 }
 
 short int getSensorStatus() {
